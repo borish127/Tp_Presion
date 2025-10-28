@@ -7,56 +7,51 @@ Created on Tue Oct 28 09:40:14 2025
 """
 import pandas as pd
 from scipy import signal
-from scipy.signal import find_peaks # <--- Se importa la función para encontrar picos
+from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 import numpy as np
 
-#%% --- 1. Definición de Nombres de Archivos y Parámetros de Muestreo ---
+# %% --- 1. Definición de Parámetros ---
 
 coeffs_filename = 'coeficientes_1-10.csv'
 input_filename = 'datos.txt'
 output_filename = 'resultado_filtrado.txt'
+FS = 50.0  # Frecuencia de muestreo en Hertz
 
-FS = 50.0 # Hertz
-
-#%% --- 2. Carga de los Coeficientes del Filtro desde CSV ---
+# %% --- 2. Carga de Coeficientes del Filtro ---
 
 try:
     coeffs_df = pd.read_csv(coeffs_filename, header=None)
     B = coeffs_df[0].dropna().values
     A = [1.0]
     print("Coeficientes FIR cargados correctamente.")
-    print(f"B = {B}")
-    print(f"A = {A}")
 except FileNotFoundError:
     print(f"Error: El archivo de coeficientes '{coeffs_filename}' no fue encontrado.")
     exit()
 except Exception as e:
     print(f"Ocurrió un error al leer el archivo de coeficientes: {e}")
     exit()
-    
-#%% --- 3. Carga de Señal y CONSTRUCCIÓN del Vector de Tiempo ---
+
+# %% --- 3. Carga de la Señal y Creación del Vector de Tiempo ---
 
 try:
     senal_original = np.loadtxt(input_filename)
     n_muestras = len(senal_original)
     tiempo_s = np.arange(n_muestras) / FS
-    print(f"\nSeñal cargada con {n_muestras} muestras.")
-    print(f"La duración total calculada de la señal es: {tiempo_s[-1]:.2f} segundos.")
+    print(f"\nSeñal cargada con {n_muestras} muestras ({tiempo_s[-1]:.2f} segundos).")
 except FileNotFoundError:
     print(f"Error: El archivo de datos '{input_filename}' no fue encontrado.")
     exit()
 except Exception as e:
     print(f"Ocurrió un error al leer el archivo de datos: {e}")
     exit()
-    
-#%% --- 4. Preparación y Aplicación del Filtro ---
+
+# %% --- 4. Aplicación del Filtro ---
 
 senal_filtrada = signal.filtfilt(B, A, senal_original)
 
-#%% --- 5. Visualización de los Resultados ---
+# %% --- 5. Visualización de Señales Completas ---
 
-# --- Gráfica 1: Señal Original (Línea más fina) ---
 plt.figure(figsize=(15, 5))
 plt.plot(tiempo_s, senal_original, label='Señal Original', color='blue', linewidth=0.8)
 plt.title('Señal Original (Sin Filtrar)')
@@ -66,86 +61,106 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# --- Gráfica 2: Señal Filtrada (Línea más fina) ---
 plt.figure(figsize=(15, 5))
 plt.plot(tiempo_s, senal_filtrada, label='Señal Filtrada', color='red', linewidth=0.8)
-plt.title('Señal Filtrada')
+plt.title('Señal Filtrada Completa')
 plt.xlabel('Tiempo (s)')
 plt.ylabel('Amplitud (V)')
 plt.legend()
 plt.grid(True)
 plt.show()
 
-# --- Gráfica 3: Comparación (Líneas más finas) ---
-plt.figure(figsize=(15, 7))
-plt.plot(tiempo_s, senal_original, label='Señal Original', color='blue', alpha=0.6, linewidth=0.8)
-plt.plot(tiempo_s, senal_filtrada, label='Señal Filtrada', color='red', linewidth=1.0)
-plt.title('Comparación de la Señal Original vs. Filtrada')
-plt.xlabel('Tiempo (s)')
-plt.ylabel('Amplitud (V)')
-plt.legend()
-plt.grid(True)
-plt.show()
+# %% --- 6. Detección Automática de la Zona de Interés ---
 
-#%% --- 6. NUEVO: ZOOM Y ANÁLISIS DE PICOS EN ZONA DE INTERÉS ---
+umbral_silencio = 0.10 * np.max(np.abs(senal_filtrada))
+es_silencioso = np.abs(senal_filtrada) < umbral_silencio
+cambios = np.diff(np.concatenate(([False], es_silencioso, [False])).astype(int))
+indices_inicio_silencio = np.where(cambios == 1)[0]
+indices_fin_silencio = np.where(cambios == -1)[0]
+duraciones_silencio = indices_fin_silencio - indices_inicio_silencio
 
-# --- Definición de la zona de interés ---
-t_inicio_zoom = 24.0
-t_fin_zoom = 30.0
+if len(duraciones_silencio) == 0:
+    indice_inicio_busqueda = 0
+else:
+    indice_gap_largo = np.argmax(duraciones_silencio)
+    indice_fin_silencio_largo = indices_fin_silencio[indice_gap_largo]
+    
+    # Se define un margen para incluir el inicio de la señal de interés
+    margen_seguridad_s = 10 # Valor ajustable en segundos
+    margen_seguridad_muestras = int(margen_seguridad_s * FS)
+    
+    indice_inicio_busqueda = indice_fin_silencio_largo - margen_seguridad_muestras
+    if indice_inicio_busqueda < 0:
+        indice_inicio_busqueda = 0
 
-# --- Encontrar los índices de las muestras dentro de este rango de tiempo ---
+zona_busqueda_senal = senal_filtrada[indice_inicio_busqueda:]
+envolvente = np.abs(signal.hilbert(zona_busqueda_senal))
+longitud_ventana_s = 0.5
+longitud_ventana_muestras = int(longitud_ventana_s * FS)
+if longitud_ventana_muestras < 1: longitud_ventana_muestras = 1
+kernel_suavizado = np.ones(longitud_ventana_muestras) / longitud_ventana_muestras
+envolvente_suavizada = np.convolve(envolvente, kernel_suavizado, mode='same')
+
+amplitud_pico_suavizado = np.max(envolvente_suavizada)
+indice_local_pico_suavizado = np.argmax(envolvente_suavizada)
+umbral_actividad = 0.25 * amplitud_pico_suavizado
+
+try:
+    envolvente_antes_del_pico = envolvente_suavizada[:indice_local_pico_suavizado]
+    indices_inicio_candidatos = np.where(envolvente_antes_del_pico <= umbral_actividad)[0]
+    indice_local_inicio = indices_inicio_candidatos[-1] if len(indices_inicio_candidatos) > 0 else 0
+
+    envolvente_despues_del_pico = envolvente_suavizada[indice_local_pico_suavizado:]
+    indices_fin_candidatos = np.where(envolvente_despues_del_pico <= umbral_actividad)[0]
+    indice_caida_relativo = indices_fin_candidatos[0] if len(indices_fin_candidatos) > 0 else len(envolvente_despues_del_pico) - 1
+    indice_local_fin = indice_local_pico_suavizado + indice_caida_relativo
+except IndexError:
+    indice_local_inicio = 0
+    indice_local_fin = len(zona_busqueda_senal) - 1
+
+indice_inicio_auto = indice_inicio_busqueda + indice_local_inicio
+indice_fin_auto = indice_inicio_busqueda + indice_local_fin
+t_inicio_zoom = tiempo_s[indice_inicio_auto]
+t_fin_zoom = tiempo_s[indice_fin_auto]
+
+print(f"\nZona de interés detectada: {t_inicio_zoom:.2f}s a {t_fin_zoom:.2f}s")
+
+# %% --- 7. Análisis y Visualización de la Zona de Interés ---
+
 indices_zoom = np.where((tiempo_s >= t_inicio_zoom) & (tiempo_s <= t_fin_zoom))[0]
-
-# --- Extraer los datos ("rebanada") de esa zona ---
 tiempo_zoom = tiempo_s[indices_zoom]
 senal_filtrada_zoom = senal_filtrada[indices_zoom]
 
-# --- Detección de picos en la señal de la zona de interés ---
-# ¡PARÁMETROS A AJUSTAR!
-# height: Amplitud mínima que debe tener un pico para ser detectado. Es útil para ignorar ruido.
-# distance: Distancia horizontal mínima (en número de muestras) entre picos consecutivos.
-distancia_min_s = 0.1 # segundos. Evita detectar picos muy juntos.
+distancia_min_s = 0.1
 distancia_muestras = int(distancia_min_s * FS)
-
 picos_indices, _ = find_peaks(senal_filtrada_zoom, height=0.01, distance=distancia_muestras)
 
-# --- Gráfica 4: Zoom de la Señal con Picos Marcados ---
 plt.figure(figsize=(15, 7))
-plt.plot(tiempo_zoom, senal_filtrada_zoom, label='Señal Filtrada (Zoom)', color='red', linewidth=1.2)
+plt.plot(tiempo_zoom, senal_filtrada_zoom, label='Señal Filtrada (Zoom)', color='red', alpha=0.6)
+envolvente_suavizada_zoom = envolvente_suavizada[indices_zoom - indice_inicio_busqueda]
+plt.plot(tiempo_zoom, envolvente_suavizada_zoom, label='Envolvente Suavizada', color='purple', linewidth=2.5)
+plt.axhline(y=umbral_actividad, color='cyan', linestyle=':', label=f'Umbral Actividad ({umbral_actividad:.3f}V)')
 plt.plot(tiempo_zoom[picos_indices], senal_filtrada_zoom[picos_indices], "x", color='green', markersize=10, label='Picos Detectados')
-plt.title(f'Zoom y Detección de Picos ({t_inicio_zoom}s - {t_fin_zoom}s)')
+plt.title(f'Zoom y Detección de Picos ({t_inicio_zoom:.2f}s - {t_fin_zoom:.2f}s)')
 plt.xlabel('Tiempo (s)')
 plt.ylabel('Amplitud (V)')
 plt.legend()
 plt.grid(True)
 plt.show()
 
-# --- Cálculo e impresión de la frecuencia ---
 if len(picos_indices) > 1:
-    # Obtener los tiempos exactos en los que ocurrieron los picos
     tiempos_de_picos = tiempo_zoom[picos_indices]
-    
-    # Calcular la diferencia de tiempo entre picos consecutivos (el período T)
     periodos = np.diff(tiempos_de_picos)
-    
-    # Calcular las frecuencias instantáneas (F = 1/T)
     frecuencias_instantaneas = 1 / periodos
-    
-    # Calcular la frecuencia promedio en la zona
     frecuencia_promedio = np.mean(frecuencias_instantaneas)
     
-    print("\n--- ANÁLISIS DE FRECUENCIA EN ZONA DE INTERÉS ---")
-    print(f"Se encontraron {len(picos_indices)} picos entre {t_inicio_zoom}s y {t_fin_zoom}s.")
-    print(f"Tiempos de los picos (s): {np.round(tiempos_de_picos, 2)}")
-    print(f"Frecuencias instantáneas (Hz): {np.round(frecuencias_instantaneas, 2)}")
-    print("--------------------------------------------------")
-    print(f"==> Frecuencia Promedio: {frecuencia_promedio:.2f} Hz <==")
-    print("--------------------------------------------------")
+    print(f"\nSe encontraron {len(picos_indices)} picos.")
+    print(f"Frecuencia Promedio en la zona: {frecuencia_promedio:.2f} Hz")
 else:
-    print("\nNo se encontraron suficientes picos en la zona de interés para calcular la frecuencia.")
+    print("\nNo se encontraron suficientes picos para calcular la frecuencia.")
 
+# %% --- 8. Guardado de Datos ---
 
-#%% --- 7. Guardado de los Datos ---
 datos_para_guardar = np.c_[tiempo_s, senal_original, senal_filtrada]
 np.savetxt(output_filename,
            datos_para_guardar,
@@ -153,4 +168,4 @@ np.savetxt(output_filename,
            header='Tiempo_s             Voltaje_Original     Voltaje_Filtrado',
            comments='')
 
-print(f"\nProceso finalizado. Los datos filtrados han sido guardados en '{output_filename}'.")
+print(f"\nProceso finalizado. Datos guardados en '{output_filename}'.")
