@@ -20,8 +20,6 @@
  * ADS1115_WE adc = ADS1115_WE(&Wire, I2C_ADDRESS); -> all together
  */
 ADS1115_WE adc = ADS1115_WE(I2C_ADDRESS);
-float voltage;
-float t = 0.0;
 
 void setup() {
   Wire.begin();
@@ -136,18 +134,13 @@ void setup() {
    */
 
 void loop() {
-  voltage = 0.0;
+  // Se lee el voltaje del canal deseado.
+  float voltage = readChannel(ADS1115_COMP_0_GND);
 
-  Serial.print(t);
-  Serial.print("\t");
+  // Se imprime el valor del voltaje, seguido de un salto de línea.
+  Serial.println(voltage, 6); // Se usan 6 decimales para mayor precisión
 
-  voltage = readChannel(ADS1115_COMP_0_GND);
-  Serial.println(voltage);
-
-
-  t=t+7.8125;
-
-  /* Delay 1000/128   */
+  // Fs = 1 / (7813 * 10^-6 s) ≈ 128 Hz.
   delayMicroseconds(7813);
 }
 
