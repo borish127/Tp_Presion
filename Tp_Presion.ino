@@ -20,6 +20,8 @@
  * ADS1115_WE adc = ADS1115_WE(&Wire, I2C_ADDRESS); -> all together
  */
 ADS1115_WE adc = ADS1115_WE(I2C_ADDRESS);
+float voltage;
+float t = 0.0;
 
 void setup() {
   Wire.begin();
@@ -38,7 +40,7 @@ void setup() {
    * ADS1115_RANGE_0512  ->  +/- 512 mV
    * ADS1115_RANGE_0256  ->  +/- 256 mV
    */
-  adc.setVoltageRange_mV(ADS1115_RANGE_6144); //comment line/change parameter to change range
+  adc.setVoltageRange_mV(ADS1115_RANGE_2048); //comment line/change parameter to change range
 
   /* Set the inputs to be compared
    *  
@@ -75,7 +77,7 @@ void setup() {
    *  ADS1115_475_SPS 
    *  ADS1115_860_SPS 
    */
-  // adc.setConvRate(ADS1115_8_SPS); //uncomment if you want to change the default
+  adc.setConvRate(ADS1115_128_SPS); //uncomment if you want to change the default
 
   /* Set continuous or single shot mode:
    * 
@@ -117,9 +119,10 @@ void setup() {
    */
   //adc.setAlertPinToConversionReady(); //uncomment if you want to change the default
 
-  Serial.println("ADS1115 Example Sketch - Continuous Mode");
-  Serial.println("All values in volts");
-  Serial.println();
+  //Serial.println("ADS1115 Example Sketch - Continuous Mode");
+  //Serial.println("All values in volts");
+  //Serial.println();
+
 }
 
   /* If you change the compare channels you can immediately read values from the conversion 
@@ -133,25 +136,19 @@ void setup() {
    */
 
 void loop() {
-  float voltage = 0.0;
+  voltage = 0.0;
 
-  Serial.print("0: ");
+  Serial.print(t);
+  Serial.print("\t");
+
   voltage = readChannel(ADS1115_COMP_0_GND);
-  Serial.print(voltage);
-
-  Serial.print(",   1: ");
-  voltage = readChannel(ADS1115_COMP_1_GND);
-  Serial.print(voltage);
-  
-  Serial.print(",   2: ");
-  voltage = readChannel(ADS1115_COMP_2_GND);
-  Serial.print(voltage);
-
-  Serial.print(",   3: ");
-  voltage = readChannel(ADS1115_COMP_3_GND);
   Serial.println(voltage);
 
-  delay(1000);
+
+  t=t+7.8125;
+
+  /* Delay 1000/128   */
+  delayMicroseconds(7813);
 }
 
 float readChannel(ADS1115_MUX channel) {
