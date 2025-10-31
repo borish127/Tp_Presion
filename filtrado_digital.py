@@ -14,9 +14,9 @@ import numpy as np
 # %% --- 1. Definición de Parámetros ---
 
 coeffs_filename = 'coeficientes_1-10.csv'
-input_filename = 'datos.txt'
+input_filename = 'datos_enzo2.txt'
 output_filename = 'resultado_filtrado.txt'
-FS = 50.0  # Frecuencia de muestreo en Hertz
+FS = 128.0  # Frecuencia de muestreo en Hertz
 
 # %% --- 2. Carga de Coeficientes del Filtro ---
 
